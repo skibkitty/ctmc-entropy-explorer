@@ -20,8 +20,10 @@ then work through the phases in order.
    `@jit(nopython=True)`.
 
 3. **No serverless backend.** Numba JIT compiles lazily on first call and
-   takes real time. Deploy as an always-on container (Fly.io/Render) and warm
-   up the JIT cache at process startup.
+   takes real time. Deploy the backend to **Render free web service** (it spins
+   down after 15 idle minutes — keep it warm with the GitHub Actions ping in
+   P5-T3) and warm up the JIT cache at process startup. The frontend must show
+   a "waking up the simulator…" state via `/api/health`.
 
 4. **No prints, no warn-and-continue in core code.** The original module has
    `print("Warning: ...")` and continues. In the web app these must become
@@ -32,11 +34,24 @@ then work through the phases in order.
    directories only. Implementation tasks (P0–P6 in the build plan) are not
    done. Work through them in order; each task is one commit.
 
-6. **Defaults already chosen** (don't relitigate unless a Section 9 question
-   is directly relevant and blocking):
-   - Python backend + TS/React frontend
+6. **The audience is SWE recruiters**, not researchers. Engineering depth
+   (typed API, tests, CI, Docker, interactive viz, the async V2 story) is the
+   product; the physics is the domain, not the point.
+
+7. **Defaults locked in a grilling session** (don't relitigate — see
+   `docs/BUILD_PLAN.md` §9 for the full list):
+   - Python FastAPI backend + React/TS frontend; Vercel free for the frontend
    - `max_length` cap 20,000; `n_states` cap 12
    - `trajectory_preview` decimated to ~2,000 points server-side
+   - Single-run **k-sweep (k = 1–4)** on the tracks demo
+   - **React Flow (`@xyflow/react`)** `RateMatrixGraph` on both playground pages
+   - Custom-mode metastate assignment: per-state dropdown, full coverage (422)
+   - GH Actions CI (pytest + tsc/build), real Dockerfile, meaningful tests, all in MVP
+   - **No database in MVP**; Neon free Postgres job-store is V2 (no hosting change)
+   - **TUR is NOT exposed** in MVP/stretch; the general-TUR goal is the LAST
+     stretch item and is **author-implemented** (agent can't derive it)
+   - "How it works" equations come verbatim from docstrings; **prose and
+     citations are the author's**; landing copy drafted by agent → author rewrite
    - MIT license
 
 ## Commands

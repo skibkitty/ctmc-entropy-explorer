@@ -2,7 +2,7 @@
 
 > **Status:** Living document for implementing agents
 > **Owner:** the project author
-> **Last updated:** 2026-09-07
+> **Last updated:** 2026-09-07 (design locked after grilling session)
 
 ---
 
@@ -10,9 +10,17 @@
 
 This document is the authoritative build spec for turning a research
 internship's Numba-JIT CTMC simulator and entropy-production estimators into a
-**polished, interactive web app**. The goal is a portfolio piece: a recruiter
-should be able to open it, play with it for 60 seconds, and see that real
-research/simulation code was productionized into something usable.
+**polished, interactive web app** — a software-engineering portfolio piece.
+
+**Audience (decided):** the author is hunting **SWE roles**, not research
+roles. A recruiter should open the app, play with it for 60 seconds, and
+conclude *"this person can code, and has real research experience."* The
+engineering depth — real simulation core, typed API, async story (V2),
+tests, CI, Docker, interactive visualization — is the talking point in
+interviews. The physics is the *domain*, not the point.
+
+**Definition of done (decided):** **MVP is shipped.** The author is applying
+to jobs now; a live working demo comes first, stretch goals strictly after.
 
 **We are not rebuilding the science.** The estimators and Gillespie simulator
 are correct and proven. We wrap them in an API + frontend.
@@ -29,7 +37,7 @@ The author has a Python module (`ctmc_simulator.py`, preserved verbatim in
 | `simulate_trajectory_core`, `precompute_transition_data`, `simulate_single_trajectory` | Gillespie CTMC simulation with metastate coarse-graining | Copy JIT functions **unchanged**; refactor the wrapper into a pure function |
 | `kth_order_estimator` | Generic EPR estimator from k+1-length sequence statistics | Port to `estimators.py` |
 | `repeated_transitions_estimator`, `analyze_transitions` | EPR estimator exact for unicyclic systems | Port to `estimators.py` |
-| `thermodynamic_uncertainty_relation_estimator`, `count_transitions_fast`, `find_snippet_boundaries_fast` | TUR lower-bound estimator (hard-coded A/B/C topology) | Copy JIT helpers unchanged; port wrapper |
+| `thermodynamic_uncertainty_relation_estimator`, `count_transitions_fast`, `find_snippet_boundaries_fast` | TUR lower-bound estimator (hard-coded A/B/C topology) | Copy JIT helpers unchanged; port wrapper into `estimators.py`. **A general-TUR is a user-led stretch goal, not agent work** (see Phase 6). |
 | `generate_rate_matrix_for_parallel_tracks`, `get_true_EPR_for_parallel_tracks` | 6-state parallel-tracks model with **closed-form exact EPR** — the flagship demo asset | Port to `models/parallel_tracks.py` |
 | `mathematica_to_numpy_array`, `save_*_to_text`, `process_simulation_results` | CLI/notebook plumbing | **Do not port** |
 | print statements throughout | Debug output | **Remove**; raise on error instead |
@@ -47,33 +55,46 @@ web app must not. Validation must be explicit and fail loudly (HTTP 422).
 ```
 ┌─────────────────────┐        HTTPS/JSON        ┌──────────────────────────┐
 │  React + TS frontend │ ───────────────────────▶ │  FastAPI backend          │
-│  (Vercel/Netlify)    │ ◀─────────────────────── │  (Fly.io / Render, always-│
-│  Recharts + KaTeX     │                          │  on Docker container)     │
-└─────────────────────┘                          └──────────────────────────┘
-                                                          │
-                                                    ctmc_core/ (ported,
-                                                    refactored simulator +
-                                                    estimators, Numba JIT)
+│  (Vercel, free)      │ ◀─────────────────────── │  (Render free web service│
+│  Recharts + KaTeX +   │                          │   + GH Actions keep-warm) │
+│  React Flow           │                          └──────────────────────────┘
+└─────────────────────┘                                    │
+                                                      ctmc_core/ (ported,
+                                                      refactored simulator +
+                                                      estimators, Numba JIT)
 ```
 
-**Critical constraint: do NOT deploy the backend as a serverless function.**
-Numba JIT compiles lazily on first call and takes real time. A cold-started
-serverless function would pay that cost on every scale-to-zero cycle. Use a
-small **always-on container** (Fly.io free tier / Render free web service) and
-**warm up the JIT cache at process startup** (Phase 2, task P2-T4).
+**Hosting (decided after 2026 pricing research):**
+- **Backend:** Render free web service (0.1 CPU / 512 MB). It **spins down
+  after 15 idle minutes** and takes ~1 min to wake, with an ephemeral
+  filesystem and 750 instance-hours/month. Mitigation: a **GitHub Actions
+  scheduled keep-warm ping** to `/api/health` keeps it effectively awake
+  (~744/750h used → fits exactly one always-on service). Caveat: GitHub
+  auto-disables scheduled workflows after 60 days of repo inactivity; **the
+  author must touch the repo at least every 60 days** (committed to).
+- **Numba JIT reality:** JIT compiles lazily on first call, and Render can
+  restart the service at any point (ephemeral disk → JIT cache wiped). So the
+  backend **warm-ups at process startup** (P2-T4) and the frontend shows a
+  distinct **"waking up the simulator…"** state via `/api/health`.
+- **Frontend:** Vercel free (Hobby). Static SPA, non-commercial portfolio use
+  is fine under the free terms.
+- **No database in MVP.** A Neon free Postgres job-store is **V2 only, after
+  MVP** (see §5 V2) and requires **no hosting change** — the backend just
+  connects over the network with a connection string.
 
 ---
 
-## 4. Tech stack (defaults)
+## 4. Tech stack (decided)
 
 - **Backend:** Python 3.11, FastAPI, Uvicorn, NumPy, Numba, Pydantic v2,
   pytest, slowapi (rate limiting)
 - **Frontend:** React + TypeScript (Vite), Tailwind CSS, shadcn/ui, Recharts,
-  react-katex
-- **Deployment:** backend → Fly.io/Render (Docker, always-on); frontend →
-  Vercel
-- **No database. No user accounts.** Stateless playground — every request is
-  self-contained (rate matrix + params in, results out).
+  react-katex, **React Flow (`@xyflow/react`)** for the Markov-chain diagram
+- **CI:** GitHub Actions — backend pytest + frontend `tsc`/build on every push
+- **Deployment:** backend → Render free web service + GH Actions keep-warm
+  ping + Docker; frontend → Vercel free
+- **V2 database:** Neon free Postgres (no hosting change)
+- **No user accounts.** Stateless playground in MVP.
 
 ---
 
@@ -82,40 +103,61 @@ small **always-on container** (Fly.io free tier / Render free web service) and
 ### MVP (must ship)
 
 1. **Parallel Tracks demo** (flagship): sliders/inputs for `α, β, u₁, w₁, u₂,
-   w₂`. Run simulation → trajectory viz, per-metastate occupancy, and a chart
-   comparing k-th order estimator (sweep of k, or vs. trajectory length)
-   against the closed-form true EPR.
-2. **Custom rate matrix mode**: N×N matrix input (N capped) + metastate
-   groupings, run simulation, get k-th order EPR estimate + basic
-   trajectory/occupancy viz. Server validates the matrix (columns sum to
-   zero) and returns a clear error otherwise.
+   w₂`. Run simulation → system diagram (React Flow), trajectory viz,
+   per-metastate occupancy, and an EPR chart comparing the **k-th order
+   estimator across a sweep of k (k = 1–4, one simulation run)** against the
+   closed-form true EPR as a horizontal reference line.
+2. **Custom rate matrix mode**: N×N matrix input (N ≤ 12 capped) + metastate
+   groups + run; k-th order EPR estimate + trajectory/occupancy viz. The
+   matrix editor **auto-generates a drawing of the Markov chain** the matrix
+   represents (shared React Flow component). Server validates the matrix
+   (columns sum to zero) and the metastate groups (every state in exactly one
+   group) and returns a clear 422 otherwise.
 3. **Trajectory visualization**: state-vs-time step plot (fine-grained,
-   decimated), bar chart of total time / visit count per metastate.
+   decimated server-side to ~2,000 points), bar chart of total time / visit
+   count per metastate.
 4. **"How it works" page**: recruiter-readable explanation of CTMCs, entropy
-   production, and each estimator, with KaTeX equations sourced **directly
-   from the existing docstrings** — do not invent or paraphrase the physics.
+   production, and each estimator. **Content split (decided):** equations are
+   sourced **directly from the existing docstrings** (verbatim, no
+   re-derivation); the **narrative prose and research citations are written by
+   the author** (who knows the physics and has the papers). The agent builds
+   the scaffold + KaTeX rendering only.
 5. **README**: architecture diagram, live demo link, "why I built this"
-   framing tied to the internship.
+   framing tied to the internship + SWE engineering story.
 
-### Stretch (only after MVP deployed and working)
+### Stretch (only after MVP deployed and working; ordered)
 
-6. Repeated-transitions estimator UI for tracks demo.
-7. TUR estimator for fixed 3-metastate A/B/C preset.
-8. Convergence-vs-length chart (re-run simulation at several trajectory
+6. Repeated-transitions estimator UI for the tracks demo.
+7. Convergence-vs-length chart (re-run simulation at several trajectory
    lengths; plot estimator error vs. length on log-log).
-9. Shareable permalinks (encode inputs in URL query string).
+8. **Shareable permalinks via URL query params** (no persistence needed).
+9. **General-TUR estimator — THE LAST stretch goal, author-implemented.** The
+   current TUR is hard-coded to a 3-metastate A/B/C topology; a general TUR
+   requires a derivation the implementing agent **cannot** produce. The author
+   must bring the math; this item exists as the "what to work on when
+   everything else is done" slot. The agent may only wire up whatever formula
+   the author supplies.
+
+### V2 — after stretch (persistence, the DB interview story)
+
+10. **Neon free Postgres job-store**: simulations become **async jobs**
+    (POST → job ID → poll for result), with run history and **durable
+    ID-based permalinks**. This is the deliberate engineering addition that
+    justifies a database (long-running stochastic sims shouldn't block HTTP),
+    plus migrations in CI. No hosting change.
 
 ### Explicitly NOT in scope
 
-- Persistence / save-to-file endpoints
+- Save-to-file endpoints / the original `save_*` /
+  `process_simulation_results` file-I/O functions
 - User accounts
-- The original `save_*` / `process_simulation_results` file-I/O functions
+- Any estimate of a DB "just because" — see V2 for the justified version
 
 ---
 
 ## 6. Backend API design
 
-All endpoints return JSON. No endpoint writes to disk.
+All endpoints return JSON. No endpoint writes to disk (MVP).
 
 ### `POST /api/simulate`
 
@@ -143,14 +185,18 @@ Response:
 
 **Caps (server-side, enforced with 422 + clear message):**
 - `max_length` ≤ 20,000
-- `n_states` ≤ 12
+- `n_states` ≤ 12 (deliberate — keeps single runs fast on the free tier)
 
-**Validation:** rate matrix must be square and columns must sum to zero. On
-failure return 422 with the offending state index. (Use the existing check in
-`simulate_single_trajectory`, but raise instead of print.)
+**Validation (all 422 with a clear message, not warnings):**
+- Rate matrix must be square; columns must sum to zero (report offending
+  state index). Use the existing check in `simulate_single_trajectory`, but
+  raise instead of print.
+- Metastate groups must cover **every** state exactly once (duplicate or
+  missing assignments are rejected).
 
 **Decimation:** `trajectory_preview` must be decimated server-side (max
-~2,000 points via uniform stride or LTTB downsampling), not shipped raw.
+~2,000 points via uniform stride or LTTB downsampling), not shipped raw. The
+estimators always run on the full-resolution trajectory.
 
 ### `GET /api/presets/parallel-tracks`
 
@@ -160,7 +206,8 @@ the frontend doesn't hardcode simulation parameters.
 ### `GET /api/health`
 
 Returns 200 once Numba warm-up has completed. Used by the frontend to show a
-"waking up the simulator…" state and by the host's health check.
+"waking up the simulator…" state, by the keep-warm ping, and by Render's
+health check.
 
 ---
 
@@ -175,13 +222,22 @@ Returns 200 once Numba warm-up has completed. Used by the frontend to show a
 
 - Landing page reads like a **portfolio case study**, not a tool homepage:
   1–2 sentences on the internship context, what problem entropy production
-  estimation solves, then a clear CTA into the tracks demo.
-- **Loading/compute states matter more than in most demos** (JIT warm-up):
-  show a distinct "waking up" state (from `/api/health`) vs. a per-run
-  "simulating…" spinner.
+  estimation solves, then a clear CTA into the tracks demo. **Copy flow
+  (decided): the agent drafts, the author rewrites in their own voice.**
+- **Loading/compute states matter more than in most demos** (JIT warm-up +
+  Render spin-down): show a distinct "waking up" state (from `/api/health`)
+  vs. a per-run "simulating…" spinner. A cold first hit is expected and
+  handled gracefully, never a broken page.
+- **`RateMatrixGraph`** (React Flow): auto-drawn directed graph of the rate
+  matrix — nodes = states colored by metastate group, edge arrows labeled
+  with their rate, pan/zoom/drag. Reused on `/playground/custom` (dynamic)
+  and `/playground/tracks` (the 6-state system diagram).
 - Charts (all Recharts): staircase trajectory plot, metastate occupancy bar
-  chart, EPR comparison chart (estimated vs. true as horizontal reference
-  line).
+  chart, EPR comparison chart (estimated points vs. true-EPR reference line).
+- **Responsive:** landing and how-it-works are fully mobile-responsive.
+  `/playground/*` renders a graceful **"best viewed on desktop"** fallback on
+  narrow viewports (<768px) rather than a broken layout (recruiters use
+  laptops).
 
 ---
 
@@ -191,13 +247,16 @@ Work through phases in order. **Each task = a separate commit.**
 
 ### Phase 0 — Repo & scaffolding
 - [ ] P0-T1: Create monorepo with `/backend` and `/frontend` directories, root
-      README stub, `.gitignore`, license.
+      README stub, `.gitignore`, license. _(Done — repo exists on GitHub:
+      `skibkitty/ctmc-entropy-explorer`.)_
 - [ ] P0-T2: Scaffold FastAPI app in `/backend` with `/api/health` returning
       `{"status": "cold"}` initially.
 - [ ] P0-T3: Scaffold Vite + React + TS app in `/frontend` with Tailwind and
       shadcn/ui installed and configured.
 - [ ] P0-T4: Set up CORS on the backend for the frontend's dev and prod
       origins.
+- [ ] P0-T5: **GitHub Actions CI**: backend `pytest` + frontend
+      `tsc`/`build` on push/PR. (SWE-signal; runs from the first commit.)
 
 ### Phase 1 — Port and refactor simulation core
 - [ ] P1-T1: Copy JIT functions (`simulate_trajectory_core`,
@@ -210,7 +269,9 @@ Work through phases in order. **Each task = a separate commit.**
 - [ ] P1-T3: Port `kth_order_estimator`, `repeated_transitions_estimator`,
       `analyze_transitions`, `thermodynamic_uncertainty_relation_estimator`
       into `backend/ctmc_core/estimators.py`, same treatment (no prints, raise
-      on bad input, return values not side effects).
+      on bad input, return values not side effects). TUR wrapper is ported for
+      completeness; it is **not** exposed in the MVP or stretch beyond item 9
+      (user-led).
 - [ ] P1-T4: Port `generate_rate_matrix_for_parallel_tracks` and
       `get_true_EPR_for_parallel_tracks` into
       `backend/ctmc_core/models/parallel_tracks.py`.
@@ -226,7 +287,7 @@ Work through phases in order. **Each task = a separate commit.**
 ### Phase 2 — Backend API
 - [ ] P2-T1: Pydantic request/response models per Section 6.
 - [ ] P2-T2: Implement `POST /api/simulate` wiring Phase 1 functions, with
-      input caps and matrix validation.
+      input caps and matrix/group validation.
 - [ ] P2-T3: Implement `GET /api/presets/parallel-tracks`.
 - [ ] P2-T4: Numba warm-up on app startup (run one tiny simulation through
       every JIT'd function); flip `/api/health` → `{"status": "ready"}` once
@@ -236,57 +297,89 @@ Work through phases in order. **Each task = a separate commit.**
       422 error paths.
 
 ### Phase 3 — Frontend core
-- [ ] P3-T1: Landing page with case-study framing.
+- [ ] P3-T1: Landing page with case-study framing (draft; author rewrites).
 - [ ] P3-T2: Reusable rate-matrix editor component (grid input + inline
       validation).
-- [ ] P3-T3: Trajectory staircase chart component (Recharts).
-- [ ] P3-T4: Metastate occupancy bar chart component.
-- [ ] P3-T5: EPR comparison chart component (estimate vs. true-EPR reference
+- [ ] P3-T3: **`RateMatrixGraph`** component (React Flow): nodes colored by
+      metastate, rate labels on edges, auto-layout, pan/zoom/drag.
+- [ ] P3-T4: Trajectory staircase chart component (Recharts).
+- [ ] P3-T5: Metastate occupancy bar chart component.
+- [ ] P3-T6: EPR comparison chart component (estimate vs. true-EPR reference
       line, or small table when no ground truth).
-- [ ] P3-T6: API client with typed request/response models matching Section 6,
-      plus loading/error/cold-start states.
+- [ ] P3-T7: API client with typed request/response models matching Section 6,
+      plus loading/error/cold-start ("waking up") states.
 
 ### Phase 4 — Playground pages
 - [ ] P4-T1: `/playground/tracks` — sliders seeded from
-      `/api/presets/parallel-tracks`, "Run simulation" button, results via
-      Phase 3 components.
-- [ ] P4-T2: `/playground/custom` — matrix editor + metastate group assignment
+      `/api/presets/parallel-tracks`, "Run simulation" button, system diagram
+      via `RateMatrixGraph`, results via Phase 3 chart components.
+- [ ] P4-T2: `/playground/custom` — matrix editor + `RateMatrixGraph` preview
+      + per-state metastate group assignment (dropdown, full coverage enforced)
       + run + results.
-- [ ] P4-T3: `/how-it-works` with KaTeX equations sourced from the docstrings.
+- [ ] P4-T3: `/how-it-works` with KaTeX equations sourced from the docstrings
+      (scaffold only; author supplies prose + citations).
 
 ### Phase 5 — Polish & deploy
-- [ ] P5-T1: Responsive pass (laptop minimum; graceful "best viewed on
-      desktop" fallback for `/playground/*` on narrow viewports).
-- [ ] P5-T2: Dockerize backend; deploy to Fly.io/Render as always-on service.
-- [ ] P5-T3: Deploy frontend to Vercel, pointed at deployed backend.
-- [ ] P5-T4: Root README: what it is, screenshot/GIF, architecture diagram,
+- [ ] P5-T1: Responsive pass; "best viewed on desktop" fallback for
+      `/playground/*` on narrow viewports.
+- [ ] P5-T2: **Dockerfile** for the backend (linux/amd64); deploy to **Render
+      free web service**.
+- [ ] P5-T3: **GitHub Actions keep-warm workflow** (scheduled ping to
+      `/api/health`). Note the 60-day repo-activity caveat for the author.
+- [ ] P5-T4: Deploy frontend to **Vercel** (free), pointed at the deployed
+      backend.
+- [ ] P5-T5: Root README: what it is, screenshot/GIF, architecture diagram,
       live link, local dev instructions, "ported from internship research
-      code" note.
-- [ ] P5-T5: Smoke-test full deployed flow end-to-end (cold start → health
-      check → run each demo → check chart rendering).
+      code" + SWE engineering story.
+- [ ] P5-T6: Smoke-test the full deployed flow end-to-end (cold start →
+      health → run each demo → check chart rendering → wake-from-sleep).
 
-### Phase 6 — Stretch goals (only if time remains)
-- [ ] P6-T1: Repeated-transitions estimator UI for tracks demo.
-- [ ] P6-T2: Fixed-topology TUR estimator preset.
-- [ ] P6-T3: Convergence-vs-length chart.
-- [ ] P6-T4: Shareable permalinks via URL query params.
+### Phase 6 — Stretch goals (only after MVP deployed; ordered)
+- [ ] P6-T1: Repeated-transitions estimator UI for the tracks demo.
+- [ ] P6-T2: Convergence-vs-length chart (log-log, estimator error vs.
+      trajectory length).
+- [ ] P6-T3: Shareable permalinks via URL query params.
+- [ ] P6-T4: **General-TUR estimator — LAST. Author-implemented.** The agent
+      cannot derive it; the author supplies the math, the agent wires it up.
+
+### Phase 7 — V2 (persistence, the DB interview story)
+- [ ] P7-T1: Neon free Postgres; migrations setup (alembic or similar) in CI.
+- [ ] P7-T2: Async job-store: `POST /api/jobs` → job ID → poll/result;
+      run history endpoint.
+- [ ] P7-T3: Durable ID-based permalinks (replaces/extends query-param links).
+- [ ] P7-T4: README architecture update documenting the async design decision
+      (why a DB now: long sims shouldn't block HTTP).
 
 ---
 
-## 9. Open questions — ask the author before proceeding if unclear
+## 9. Design decisions — settled in the grilling session (2026-09-07)
 
-1. **Backend vs. full client-side port**: this plan assumes a real Python
-   backend (Section 3). A zero-hosting-cost fully-static site (estimators
-   reimplemented in TypeScript) is a materially different plan. Confirm before
-   Phase 1.
-2. **Hosting accounts**: does the author already have Fly.io/Render and Vercel
-   accounts, or should the agent default to whichever is easiest to set up?
-3. **Domain/branding**: generic host subdomain, or under a personal domain?
-4. **Custom rate matrix state cap**: confirmed default of 12 states acceptable,
-   or is a specific larger showcase system needed?
+These were the plan's open questions; all have explicit answers. **Do not
+relitigate them.**
 
-If none of these block progress, **proceed with the defaults** stated
-throughout this document rather than pausing.
+1. **Backend vs. full client-side port:** ✗ closed — real Python backend
+   (Section 3). No TS reimplementation of the estimators.
+2. **Hosting:** ✗ closed — Render free web service + GH Actions keep-warm
+   ping; frontend on Vercel free. Fly.io ruled out (no free tier for new
+   accounts as of 2026). Author must touch the repo within every 60 days to
+   keep the ping alive.
+3. **Domain/branding:** generic host subdomains; no custom domain.
+4. **Custom rate matrix state cap:** 12 states, confirmed.
+5. **Database:** V2 only — Neon free Postgres job-store, after MVP/stretch.
+   No hosting change. (Answer to "does it need a hosting change?": only if
+   file-backed SQLite; Neon doesn't.)
+6. **Audience framing:** SWE recruiters; engineering depth is the product.
+7. **New feature:** auto-drawn Markov chain (`RateMatrixGraph`, React Flow)
+   on both playground pages.
+8. **TUR:** fixed-preset stretch dropped; general-TUR is the last stretch
+   goal and is **author-implemented**.
+9. **MVP meta:** GH Actions CI + Dockerfile + meaningful tests all in MVP.
+10. **Content split:** equations from docstrings; author writes prose +
+    citations; landing copy drafted by agent, rewritten by author.
+11. **Estimator sweep:** k = 1–4 single-run k-sweep in MVP; convergence-vs-
+    length stays as stretch.
+12. **Custom-mode metastate assignment:** per-state dropdown, full coverage
+    required (422 otherwise).
 
 ---
 
@@ -326,9 +419,12 @@ backend/
    never write to disk.
 4. **Equations for the "How it works" page come from the docstrings** — copy
    the LaTeX/math semantics from the existing docstrings verbatim. Do not
-   re-derive the physics.
+   re-derive the physics. Prose + citations are the author's.
 5. **Validation is centralized in Pydantic + a matrix validator**, so the API
    and the core agree on what's valid.
+6. **TUR is ported but not surfaced.** Export the wrapper (P1-T3) for
+   completeness and tests only; nothing in the MVP UI or stretch exposes it
+   except the author-led general-TUR goal (P6-T4).
 
 ### Config / environment variables
 
