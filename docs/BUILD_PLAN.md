@@ -67,15 +67,21 @@ web app must not. Validation must be explicit and fail loudly (HTTP 422).
 **Hosting (decided after 2026 pricing research):**
 - **Backend:** Render free web service (0.1 CPU / 512 MB). It **spins down
   after 15 idle minutes** and takes ~1 min to wake, with an ephemeral
-  filesystem and 750 instance-hours/month. Mitigation: a **GitHub Actions
-  scheduled keep-warm ping** to `/api/health` keeps it effectively awake
-  (~744/750h used → fits exactly one always-on service). Caveat: GitHub
-  auto-disables scheduled workflows after 60 days of repo inactivity; **the
-  author must touch the repo at least every 60 days** (committed to).
+  filesystem and 750 instance-hours/month (**pooled per Render *workspace*,
+  not per service** — the keep-warm math (~744/750h) assumes this workspace
+  hosts exactly one web service; a second free service there would break it).
+  Mitigation: a **GitHub Actions keep-warm ping every 5 minutes** to
+  `/api/health`. Caveat: GitHub auto-disables scheduled workflows after 60
+  days of repo inactivity; **the author must touch the repo at least every 60
+  days** (committed to).
 - **Numba JIT reality:** JIT compiles lazily on first call, and Render can
   restart the service at any point (ephemeral disk → JIT cache wiped). So the
   backend **warm-ups at process startup** (P2-T4) and the frontend shows a
   distinct **"waking up the simulator…"** state via `/api/health`.
+- **Keep-warm margin:** GitHub Actions' `schedule:` trigger is best-effort and
+  can slip several minutes under platform load, so a 10-minute ping is not a
+  safe margin against a 15-minute idle window. Ping every 5 minutes (P5-T3).
+  Occasional cold starts still happen and are covered by the waking-up UX.
 - **Frontend:** Vercel free (Hobby). Static SPA, non-commercial portfolio use
   is fine under the free terms.
 - **No database in MVP.** A Neon free Postgres job-store is **V2 only, after
@@ -87,7 +93,7 @@ web app must not. Validation must be explicit and fail loudly (HTTP 422).
 ## 4. Tech stack (decided)
 
 - **Backend:** Python 3.11, FastAPI, Uvicorn, NumPy, Numba, Pydantic v2,
-  pytest, slowapi (rate limiting)
+  pytest, slowapi (per-IP rate limiting) + a global concurrency semaphore
 - **Frontend:** React + TypeScript (Vite), Tailwind CSS, shadcn/ui, Recharts,
   react-katex, **React Flow (`@xyflow/react`)** for the Markov-chain diagram
 - **CI:** GitHub Actions — backend pytest + frontend `tsc`/build on every push
@@ -183,6 +189,12 @@ Response:
 }
 ```
 
+**Load protection:** slowapi per-IP rate limit **plus a global concurrency
+semaphore** (max 2–3 simultaneous simulations; beyond that respond HTTP 503
+"simulators busy, retry"). A 0.1 CPU box queues badly when several *different*
+IPs hit `/api/simulate` at once (shared link → recruiter forwards → Discord),
+which per-IP limits cannot stop.
+
 **Caps (server-side, enforced with 422 + clear message):**
 - `max_length` ≤ 20,000
 - `n_states` ≤ 12 (deliberate — keeps single runs fast on the free tier)
@@ -191,6 +203,13 @@ Response:
 - Rate matrix must be square; columns must sum to zero (report offending
   state index). Use the existing check in `simulate_single_trajectory`, but
   raise instead of print.
+- All entries must be **finite** (reject NaN/Inf with the offending entry).
+- All **off-diagonal** entries must be **non-negative**.
+- Diagonal (exit-rate) entries must be strictly positive per state. The JIT
+  core's "negative exit rate → print warning and break" branch (see
+  `simulate_trajectory_core`) must become an **explicit raise**: a
+  numerically-adjacent-but-column-balanced matrix must return a clear 422, not
+  a silently truncated/empty trajectory.
 - Metastate groups must cover **every** state exactly once (duplicate or
   missing assignments are rejected).
 
@@ -265,7 +284,9 @@ Work through phases in order. **Each task = a separate commit.**
       **unchanged**.
 - [ ] P1-T2: Refactor `simulate_single_trajectory` into a pure function that
       returns a structured result object and raises `ValueError` on invalid
-      input (no printing/warn-and-continue).
+      input (no printing/warn-and-continue). The JIT core's "negative exit
+      rate → print and break" path must become an explicit raise (non-positive
+      or non-finite exit rate → error).
 - [ ] P1-T3: Port `kth_order_estimator`, `repeated_transitions_estimator`,
       `analyze_transitions`, `thermodynamic_uncertainty_relation_estimator`
       into `backend/ctmc_core/estimators.py`, same treatment (no prints, raise
@@ -287,12 +308,15 @@ Work through phases in order. **Each task = a separate commit.**
 ### Phase 2 — Backend API
 - [ ] P2-T1: Pydantic request/response models per Section 6.
 - [ ] P2-T2: Implement `POST /api/simulate` wiring Phase 1 functions, with
-      input caps and matrix/group validation.
+      input caps and full matrix validation (square, finite, off-diagonal ≥ 0,
+      columns sum to zero) plus group validation.
 - [ ] P2-T3: Implement `GET /api/presets/parallel-tracks`.
 - [ ] P2-T4: Numba warm-up on app startup (run one tiny simulation through
       every JIT'd function); flip `/api/health` → `{"status": "ready"}` once
       complete.
-- [ ] P2-T5: Rate limiting (slowapi) on `/api/simulate`.
+- [ ] P2-T5: Rate limiting (slowapi per-IP) **and a global concurrency
+      semaphore** (max 2–3 concurrent sims → 503 "busy, retry") on
+      `/api/simulate`.
 - [ ] P2-T6: FastAPI TestClient integration tests for all endpoints, including
       422 error paths.
 
@@ -308,6 +332,9 @@ Work through phases in order. **Each task = a separate commit.**
       line, or small table when no ground truth).
 - [ ] P3-T7: API client with typed request/response models matching Section 6,
       plus loading/error/cold-start ("waking up") states.
+- [ ] P3-T8: React error boundary around the playground results panel — a
+      malformed response or a chart edge case blanks only the result area,
+      never the whole page mid-demo.
 
 ### Phase 4 — Playground pages
 - [ ] P4-T1: `/playground/tracks` — sliders seeded from
@@ -324,8 +351,12 @@ Work through phases in order. **Each task = a separate commit.**
       `/playground/*` on narrow viewports.
 - [ ] P5-T2: **Dockerfile** for the backend (linux/amd64); deploy to **Render
       free web service**.
-- [ ] P5-T3: **GitHub Actions keep-warm workflow** (scheduled ping to
-      `/api/health`). Note the 60-day repo-activity caveat for the author.
+- [ ] P5-T3: **GitHub Actions keep-warm workflow** pinging `/api/health`
+      **every 5 minutes** (cron `*/5 * * * *`). Render's window is 15 idle
+      minutes and the `schedule:` trigger is best-effort, so every-5-min is
+      the margin — 10-min is not safe. Occasional cold starts still happen and
+      are covered by the waking-up UX. Note the 60-day repo-activity caveat
+      for the author.
 - [ ] P5-T4: Deploy frontend to **Vercel** (free), pointed at the deployed
       backend.
 - [ ] P5-T5: Root README: what it is, screenshot/GIF, architecture diagram,
@@ -333,6 +364,14 @@ Work through phases in order. **Each task = a separate commit.**
       code" + SWE engineering story.
 - [ ] P5-T6: Smoke-test the full deployed flow end-to-end (cold start →
       health → run each demo → check chart rendering → wake-from-sleep).
+- [ ] P5-T7: **Link-preview polish** — OG/Twitter meta tags (title,
+      description, image) in the landing page `<head>`. This is a link sent
+      directly in emails/LinkedIn/Discord; a bare URL with no preview card
+      looks unfinished.
+- [ ] P5-T8: Lightweight privacy-respecting analytics (Vercel Analytics —
+      included free on Hobby, or Plausible). Gives an interview-ready data
+      point ("N people ran the tracks demo, here's the parameter range they
+      explored") instead of just asserting the project got attention.
 
 ### Phase 6 — Stretch goals (only after MVP deployed; ordered)
 - [ ] P6-T1: Repeated-transitions estimator UI for the tracks demo.
@@ -380,6 +419,19 @@ relitigate them.**
     length stays as stretch.
 12. **Custom-mode metastate assignment:** per-state dropdown, full coverage
     required (422 otherwise).
+13. **Keep-warm interval:** every 5 minutes (`*/5` cron). Render's idle window
+    is 15 min and GH Actions `schedule:` is best-effort, so 10-min is not a
+    safe margin; occasional cold starts remain and are covered by the
+    waking-up UX.
+14. **Load protection:** per-IP rate limit **plus** a global concurrency
+    semaphore (2–3 concurrent sims → 503). A shared link hits the box from
+    many IPs at once; per-IP limits can't stop that queueing a 0.1 CPU.
+15. **Matrix validation depth:** finite entries, off-diagonal ≥ 0, exit rates
+    > 0 — the JIT core's "negative exit rate → break" branch becomes an
+    explicit 422, never a truncated trajectory.
+16. **Render workspace budget:** 750 free instance-hours are pooled per
+    workspace, not per service — keep-warm math assumes this workspace hosts
+    only this one web service.
 
 ---
 

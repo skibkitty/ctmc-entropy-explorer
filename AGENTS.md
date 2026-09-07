@@ -22,7 +22,7 @@ then work through the phases in order.
 3. **No serverless backend.** Numba JIT compiles lazily on first call and
    takes real time. Deploy the backend to **Render free web service** (it spins
    down after 15 idle minutes — keep it warm with the GitHub Actions ping in
-   P5-T3) and warm up the JIT cache at process startup. The frontend must show
+   P5-T3, scheduled every 5 minutes) and warm up the JIT cache at process startup. The frontend must show
    a "waking up the simulator…" state via `/api/health`.
 
 4. **No prints, no warn-and-continue in core code.** The original module has
@@ -52,6 +52,12 @@ then work through the phases in order.
      stretch item and is **author-implemented** (agent can't derive it)
    - "How it works" equations come verbatim from docstrings; **prose and
      citations are the author's**; landing copy drafted by agent → author rewrite
+   - Per-IP rate limit **plus** global concurrency semaphore (2–3 concurrent
+     sims → 503 "busy"); matrix validation includes finite entries and
+     off-diagonal ≥ 0, and the JIT core's "negative exit rate → break" branch
+     becomes an explicit raise (422)
+   - Keep-warm ping every 5 minutes (Render idle window is 15 min; GH Actions
+     `schedule:` is best-effort)
    - MIT license
 
 ## Commands
