@@ -1,5 +1,7 @@
 """FastAPI application for the CTMC Entropy Production Explorer."""
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,10 +11,16 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# CORS will be configured in P0-T4
+# CORS origins: comma-separated list in CORS_ORIGINS env var, or dev defaults
+_cors_origins_str = os.environ.get(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://localhost:4173",
+)
+cors_origins = [o.strip() for o in _cors_origins_str.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
