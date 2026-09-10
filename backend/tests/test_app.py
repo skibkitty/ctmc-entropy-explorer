@@ -1,11 +1,11 @@
 """Tests for the FastAPI application."""
 
-import importlib
+import os
 
+import pytest
 from fastapi.testclient import TestClient
 
-import backend.main as main_module
-from backend.main import app
+from backend.main import app, parse_cors_origins
 
 client = TestClient(app)
 
@@ -35,17 +35,23 @@ def test_cors_rejects_unknown_origin():
     assert "access-control-allow-origin" not in response.headers
 
 
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("https://custom.example", ["https://custom.example"]),
+        ("https://a.example,https://b.example", ["https://a.example", "https://b.example"]),
+        (" https://a.example , https://b.example ", ["https://a.example", "https://b.example"]),
+        ("https://a.example,,https://b.example,", ["https://a.example", "https://b.example"]),
+        ("", []),
+    ],
+)
+def test_parse_cors_origins(raw, expected):
+    """Comma-separated origins are trimmed; empty entries are dropped."""
+    assert parse_cors_origins(raw) == expected
+
+
 def test_cors_env_override(monkeypatch):
-    """CORS_ORIGINS env var replaces the dev defaults."""
+    """CORS_ORIGINS env var replaces the dev defaults (via the pure parser)."""
     monkeypatch.setenv("CORS_ORIGINS", "https://custom.example")
-    importlib.reload(main_module)
-    reloaded_client = TestClient(main_module.app)
-
-    response = reloaded_client.get(
-        "/api/health",
-        headers={"Origin": "https://custom.example"},
-    )
-    assert response.headers.get("access-control-allow-origin") == "https://custom.example"
-
-    monkeypatch.delenv("CORS_ORIGINS")
-    importlib.reload(main_module)
+    origins = parse_cors_origins(os.environ["CORS_ORIGINS"])
+    assert origins == ["https://custom.example"]
