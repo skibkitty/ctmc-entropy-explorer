@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from backend.ctmc_core.estimators import (
-    analyze_transitions,
+    count_repeated_transition_patterns,
     kth_order_estimator,
     repeated_transitions_estimator,
     thermodynamic_uncertainty_relation_estimator,
@@ -68,9 +68,9 @@ def test_kth_order_positive_on_driven_chain():
     assert k2 > 0.0
 
 
-def test_analyze_transitions_counts_patterns():
+def test_count_repeated_transition_patterns():
     trajectory = [0, 0, 1, 0, 0, 1, 1, 0, 1]
-    counts = analyze_transitions(trajectory, 0, 1)
+    counts = count_repeated_transition_patterns(trajectory, 0, 1)
 
     assert list(counts.values()) == [0, 2, 0, 2]
 

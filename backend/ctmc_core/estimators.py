@@ -78,11 +78,13 @@ def kth_order_estimator(trajectory, k, total_simulation_time):
 # Repeated transitions estimator
 # ============================================================================
 
-def analyze_transitions(trajectory, state1, state2):
+def count_repeated_transition_patterns(trajectory, state1, state2):
     """
-    Analyze conditional transition patterns between two states.
+    Count conditional transition patterns between two states.
 
-    Counts four specific patterns for the repeated transitions estimator:
+    This is the pattern-counting helper for the Harunari repeated-transitions
+    estimator (not a waiting/residence-time analysis). It counts four specific
+    patterns:
     1. state1→state2 ... (no state2→state1) ... state1→state2
     2. state1→state2 ... (no state1→state2) ... state2→state1
     3. state2→state1 ... (no state1→state2) ... state2→state1
@@ -203,7 +205,7 @@ def repeated_transitions_estimator(trajectory, start, end, total_simulation_time
     counts_minus = first_order_counts.get((end, start), 0)
 
     # Count conditional transitions
-    conditional_transitions = analyze_transitions(coarse_trajectory, start, end)
+    conditional_transitions = count_repeated_transition_patterns(coarse_trajectory, start, end)
     patterns = list(conditional_transitions.values())
     counts_plus_given_plus = patterns[0] if len(patterns) > 0 else 0
     counts_minus_given_plus = patterns[1] if len(patterns) > 1 else 0

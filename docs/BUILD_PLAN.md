@@ -36,7 +36,7 @@ The author has a Python module (`ctmc_simulator.py`, preserved verbatim in
 |---|---|---|
 | `simulate_trajectory_core`, `precompute_transition_data`, `simulate_single_trajectory` | Gillespie CTMC simulation with metastate coarse-graining | Copy JIT functions **unchanged**; refactor the wrapper into a pure function |
 | `kth_order_estimator` | Generic EPR estimator from k+1-length sequence statistics | Port to `estimators.py` |
-| `repeated_transitions_estimator`, `analyze_transitions` | EPR estimator exact for unicyclic systems | Port to `estimators.py` |
+| `repeated_transitions_estimator`, `analyze_transitions` | EPR estimator exact for unicyclic systems | Port to `estimators.py` (pattern-counter renamed to `count_repeated_transition_patterns`) |
 | `thermodynamic_uncertainty_relation_estimator`, `count_transitions_fast`, `find_snippet_boundaries_fast` | TUR lower-bound estimator (hard-coded A/B/C topology) | Copy JIT helpers unchanged; port wrapper into `estimators.py`. **A general-TUR is a user-led stretch goal, not agent work** (see Phase 6). |
 | `generate_rate_matrix_for_parallel_tracks`, `get_true_EPR_for_parallel_tracks` | 6-state parallel-tracks model with **closed-form exact EPR** — the flagship demo asset | Port to `models/parallel_tracks.py` |
 | `mathematica_to_numpy_array`, `save_*_to_text`, `process_simulation_results` | CLI/notebook plumbing | **Do not port** |
