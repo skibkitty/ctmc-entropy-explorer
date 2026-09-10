@@ -19,6 +19,13 @@ from backend.ctmc_core.simulation import seed_simulation, simulate_single_trajec
 
 ESTIMATOR_ZERO_TOLERANCE = 0.1
 
+# The driven fixtures estimate ~0.28; asserting > 0.1 keeps the regression
+# meaningful so a broken (near-zero) implementation cannot pass. A driven
+# trajectory that estimated ~0 would be indistinguishable from a properly
+# zero-EPR non-driven one (see the zero-EPR tests), so the threshold also
+# guards against that ambiguity.
+MIN_DRIVEN_UNICYCLIC_ESTIMATE = 0.1
+
 def test_kth_order_zero_on_constant_trajectory():
     """A trajectory that never changes state yields EPR 0.0, never an error."""
     trajectory = [0] * 20
@@ -90,7 +97,7 @@ def test_repeated_transitions_positive_on_unicyclic_trajectory():
     estimate = repeated_transitions_estimator(
         trajectory, 0, 1, total_simulation_time=60.0
     )
-    assert estimate > 0.1
+    assert estimate > MIN_DRIVEN_UNICYCLIC_ESTIMATE
 
 
 def test_repeated_transitions_state_mapping():
@@ -105,7 +112,7 @@ def test_repeated_transitions_state_mapping():
     estimate = repeated_transitions_estimator(
         trajectory, "a", "b", total_simulation_time=60.0, state_mapping=mapping
     )
-    assert estimate > 0.1
+    assert estimate > MIN_DRIVEN_UNICYCLIC_ESTIMATE
 
 
 def test_tur_requires_snippet_time_length():
