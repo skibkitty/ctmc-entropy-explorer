@@ -120,7 +120,10 @@ def precompute_transition_data(rate_matrix):
     For each state i:
     - Exit rate = -rate_matrix[i,i] (negative of diagonal element)
     - Transition probabilities = off-diagonal rates / exit rate
-    
+
+    Orientation convention: element (i, j) is the rate from state j → state i
+    (column = starting state, row = ending state).
+
     Args:
         rate_matrix: Square matrix of transition rates
         
@@ -259,6 +262,9 @@ def count_transitions_fast(converted_snippet):
 def validate_rate_matrix(rate_matrix):
     """
     Validate a rate matrix and return it as a float64 numpy array.
+
+    Orientation convention: element (i, j) is the rate from state j → state i
+    (column = starting state, row = ending state), so each column sums to zero.
 
     Raises ``ValueError`` (not warnings) on any malformed or unbalanced input
     so the API can surface a clear HTTP 422. Checks, in order:
@@ -417,6 +423,7 @@ def simulate_single_trajectory(rate_matrix, metastate_groups, max_length=1000,
 
     Args:
         rate_matrix: Square matrix where element (i,j) is the rate from j to i
+            (column = starting state, row = ending state)
         metastate_groups: Dict mapping metastate names to lists of state indices
         max_length: Maximum trajectory length (number of transitions)
         initial_state: Starting state index

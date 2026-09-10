@@ -14,6 +14,12 @@ def generate_rate_matrix_for_parallel_tracks(alpha, beta, u_one, w_one, u_two, w
     """
     Generate rate matrix for parallel tracks model.
 
+    Orientation convention: element (i, j) is the rate from state j → state i,
+    i.e. the **column** is the starting state and the **row** is the ending
+    state (the j-th column sums to zero). Some cited papers use the opposite
+    convention (row = start, column = end); this implementation follows the
+    column-start convention used throughout this project.
+
     Args:
         alpha, beta: Transition rates between tracks
         u_one, w_one: Forward and backward rates on track 1
