@@ -34,7 +34,7 @@ The author has a Python module (`ctmc_simulator.py`, preserved verbatim in
 
 | Asset | What it does | Where to port |
 |---|---|---|
-| `simulate_trajectory_core`, `precompute_transition_data`, `simulate_single_trajectory` | Gillespie CTMC simulation with metastate coarse-graining | Copy JIT functions **unchanged**; refactor the wrapper into a pure function |
+| `simulate_trajectory_core`, `precompute_transition_data`, `simulate_single_trajectory` | Gillespie CTMC simulation with metastate coarse-graining | Copy JIT functions **unchanged**; refactor the wrapper into a pure function. `simulate_trajectory_core` later refactored per issue #6 (print-and-break → explicit raise) |
 | `kth_order_estimator` | Generic EPR estimator from k+1-length sequence statistics | Port to `estimators.py` |
 | `repeated_transitions_estimator`, `analyze_transitions` | EPR estimator exact for unicyclic systems | Port to `estimators.py` (pattern-counter renamed to `count_repeated_transition_patterns`) |
 | `thermodynamic_uncertainty_relation_estimator`, `count_transitions_fast`, `find_snippet_boundaries_fast` | TUR lower-bound estimator (hard-coded A/B/C topology) | Copy JIT helpers unchanged; port wrapper into `estimators.py`. **A general-TUR is a user-led stretch goal, not agent work** (see Phase 6). |
@@ -207,7 +207,7 @@ which per-IP limits cannot stop.
 - All **off-diagonal** entries must be **non-negative**.
 - Diagonal (exit-rate) entries must be strictly positive per state. The JIT
   core's "negative exit rate → print warning and break" branch (see
-  `simulate_trajectory_core`) must become an **explicit raise**: a
+  `simulate_trajectory_core`) is now an **explicit raise** (issue #6): a
   numerically-adjacent-but-column-balanced matrix must return a clear 422, not
   a silently truncated/empty trajectory.
 - Metastate groups must cover **every** state exactly once (duplicate or
@@ -281,12 +281,14 @@ Work through phases in order. **Each task = a separate commit.**
 - [ ] P1-T1: Copy JIT functions (`simulate_trajectory_core`,
       `precompute_transition_data`, `find_snippet_boundaries_fast`,
       `count_transitions_fast`) into `backend/ctmc_core/simulation.py`
-      **unchanged**.
+      **unchanged**. _(`simulate_trajectory_core` was later refactored per
+      issue #6; the other three remain verbatim.)_
 - [ ] P1-T2: Refactor `simulate_single_trajectory` into a pure function that
       returns a structured result object and raises `ValueError` on invalid
       input (no printing/warn-and-continue). The JIT core's "negative exit
       rate → print and break" path must become an explicit raise (non-positive
-      or non-finite exit rate → error).
+      or non-finite exit rate → error). _(Done — the raise lives in the core
+      and propagates through `simulate_single_trajectory`.)_
 - [ ] P1-T3: Port `kth_order_estimator`, `repeated_transitions_estimator`,
       `analyze_transitions`, `thermodynamic_uncertainty_relation_estimator`
       into `backend/ctmc_core/estimators.py`, same treatment (no prints, raise
@@ -460,10 +462,11 @@ backend/
 
 ### Ground rules for the port
 
-1. **JIT functions copied verbatim.** `simulate_trajectory_core`,
-   `precompute_transition_data`, `find_snippet_boundaries_fast`,
-   `count_transitions_fast` are correct and Numba-optimized. Do not
-   "improve" them unless a test proves a bug.
+1. **JIT functions copied verbatim.** `precompute_transition_data`,
+   `find_snippet_boundaries_fast`, `count_transitions_fast` are correct and
+   Numba-optimized. Do not "improve" them unless a test proves a bug.
+   `simulate_trajectory_core` is the exception: refactored per issue #6 to
+   replace its print-and-break branch with an explicit `ValueError` raise.
 2. **No print statements in core.** All debug/informational prints are
    removed or converted to logging (or just dropped). All warn-and-continue
    becomes raise/422.

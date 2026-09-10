@@ -11,13 +11,17 @@ then work through the phases in order.
    it. The authoritative source is `docs/source/reference_ctmc_simulator.py`
    — trust it over any paraphrase.
 
-2. **The JIT functions are correct and must be copied verbatim:**
-   - `simulate_trajectory_core`
+2. **Three JIT functions must be copied verbatim** (correct as-is, kept
+   unchanged):
    - `precompute_transition_data`
    - `find_snippet_boundaries_fast`
    - `count_transitions_fast`
    Do not touch these unless a test proves a bug. They run under Numba
    `@jit(nopython=True)`.
+   `simulate_trajectory_core` is the exception: it was refactored per issue #6 —
+   its `print("Warning: …")`/`break` branch is now an explicit `ValueError`
+   raise. The authoritative original remains in
+   `docs/source/reference_ctmc_simulator.py`.
 
 3. **No serverless backend.** Numba JIT compiles lazily on first call and
    takes real time. Deploy the backend to **Render free web service** (it spins

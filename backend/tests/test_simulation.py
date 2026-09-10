@@ -6,6 +6,7 @@ import pytest
 from backend.ctmc_core.simulation import (
     seed_simulation,
     simulate_single_trajectory,
+    simulate_trajectory_core,
     validate_metastate_groups,
     validate_rate_matrix,
 )
@@ -143,3 +144,20 @@ def test_validate_rate_matrix_returns_float64_copy():
     matrix = two_state_matrix()
     validated = validate_rate_matrix(matrix)
     np.testing.assert_allclose(validated, matrix)
+
+
+def test_core_raises_on_non_positive_exit_rate():
+    """The JIT core raises instead of silently truncating on a bad exit rate.
+
+    Validation normally prevents this from reaching the core; this exercises
+    the core directly (with crafted exit_rates) to pin the refactored branch.
+    """
+    matrix = np.array([[-1.0, 1.0], [1.0, -1.0]])
+    state_to_metastate = np.array([0, 1], dtype=np.int32)
+    exit_rates = np.array([0.0, 1.0])
+    transitions = np.array([[0.0, 1.0], [1.0, 0.0]])
+
+    with pytest.raises(ValueError, match="state 0 with non-positive exit rate"):
+        simulate_trajectory_core(
+            matrix, state_to_metastate, 100, 0, exit_rates, transitions
+        )

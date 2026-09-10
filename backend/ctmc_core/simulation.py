@@ -1,11 +1,15 @@
 """
 Continuous-Time Markov Chain simulation core.
 
-Port of the research module's simulation functions. The Numba-JIT functions
-below are copied verbatim from `docs/source/reference_ctmc_simulator.py` and
-must not be modified. The user-facing `simulate_single_trajectory` wrapper is
-refactored into a pure function that raises `ValueError` on invalid input
-instead of printing warnings and continuing.
+Port of the research module's simulation functions. Three Numba-JIT helpers
+(`precompute_transition_data`, `find_snippet_boundaries_fast`,
+`count_transitions_fast`) are copied verbatim from
+`docs/source/reference_ctmc_simulator.py` and must not be modified.
+`simulate_trajectory_core` was refactored per issue #6: its original
+print-and-break branch for a non-positive exit rate is now an explicit raise.
+The user-facing `simulate_single_trajectory` wrapper is a pure function that
+raises `ValueError` on invalid input instead of printing warnings and
+continuing.
 """
 
 from dataclasses import dataclass
@@ -15,7 +19,7 @@ from numba import jit
 
 
 # ============================================================================
-# Core Simulation Functions (JIT-Compiled) — copied verbatim
+# Core Simulation Functions (JIT-Compiled)
 # ============================================================================
 
 @jit(nopython=True)
@@ -70,9 +74,12 @@ def simulate_trajectory_core(rate_matrix, state_to_metastate_array, max_length,
         exit_rate = exit_rates[current_state]
         
         if exit_rate <= 0:
-            # exit_rate should never be negative nor zero (the diagonal of rate matrix is written as the negative escape rate)
-            print("Warning: Reached state with negative exit rate.")
-            break
+            # exit_rate should never be negative nor zero (the diagonal of the
+            # rate matrix is written as the negative escape rate). Fail loudly:
+            # a truncated trajectory would silently corrupt estimates.
+            raise ValueError(
+                f"Reached state {current_state} with non-positive exit rate {exit_rate}"
+            )
         
         # Sample waiting time using inverse transform sampling
         waiting_time = -np.log(np.random.random()) / exit_rate
