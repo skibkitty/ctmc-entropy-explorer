@@ -1,5 +1,7 @@
 """Unit tests for the parallel tracks model (P1-T4)."""
 
+from typing import NamedTuple
+
 import numpy as np
 import pytest
 
@@ -12,9 +14,18 @@ from backend.ctmc_core.models.parallel_tracks import (
 from backend.ctmc_core.simulation import seed_simulation, simulate_single_trajectory
 
 
+class RateParams(NamedTuple):
+    alpha: float
+    beta: float
+    u_one: float
+    w_one: float
+    u_two: float
+    w_two: float
+
+
 PARAMETER_SETS = [
-    (0.5, 0.3, 1.0, 0.2, 0.8, 0.4),
-    (0.2, 0.7, 0.5, 0.1, 1.2, 1.0),
+    RateParams(alpha=0.5, beta=0.3, u_one=1.0, w_one=0.2, u_two=0.8, w_two=0.4),
+    RateParams(alpha=0.2, beta=0.7, u_one=0.5, w_one=0.1, u_two=1.2, w_two=1.0),
 ]
 
 SEEDS = (3, 7, 42, 123)
