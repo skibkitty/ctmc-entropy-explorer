@@ -61,6 +61,22 @@ def test_uniform_stride_keeps_last_point():
     assert np.all(np.diff(out_times) > 0)
 
 
+def test_uniform_stride_respects_max_points_when_ceil_overflows():
+    """Regression: n=10, max_points=3 used to return 4 points.
+
+    The old stride (ceil(n/max_points) = 4) plus the appended last point
+    exceeded the budget. The stride is now computed so the last point fits
+    inside max_points.
+    """
+    times = np.arange(10, dtype=np.float64)
+    states = np.arange(10)
+    out_times, out_states = decimate_uniform(times, states, 3)
+    assert len(out_times) <= 3
+    assert out_times[0] == 0.0
+    assert out_times[-1] == 9.0
+    assert np.all(np.diff(out_times) > 0)
+
+
 def test_lttb_passthrough_for_small_input():
     times = np.array([0.0, 1.0, 2.0])
     states = np.array([0, 1, 2])

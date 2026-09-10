@@ -51,7 +51,7 @@ def decimate_uniform(times, states, max_points):
     Uniform-stride decimation: keeps every k-th point plus the last one.
     """
     n = len(times)
-    stride = int(np.ceil(n / max_points))
+    stride = int(np.ceil((n - 1) / (max_points - 1)))
     indices = np.arange(0, n, stride)
     if indices[-1] != n - 1:
         indices = np.append(indices, n - 1)
