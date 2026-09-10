@@ -17,10 +17,17 @@ from backend.ctmc_core.models.parallel_tracks import (
 )
 from backend.ctmc_core.simulation import seed_simulation, simulate_single_trajectory
 
+ESTIMATOR_ZERO_TOLERANCE = 0.1
 
 def test_kth_order_zero_on_constant_trajectory():
     """A trajectory that never changes state yields EPR 0.0, never an error."""
     trajectory = [0] * 20
+    assert kth_order_estimator(trajectory, 1, total_simulation_time=5.0) == 0.0
+    assert kth_order_estimator(trajectory, 2, total_simulation_time=5.0) == 0.0
+
+def test_kth_order_zero_on_cherrypicked_reversible_trajectory():
+    """A trajectory that's reversible yields EPR 0.0."""
+    trajectory = [0, 1] * 20
     assert kth_order_estimator(trajectory, 1, total_simulation_time=5.0) == 0.0
     assert kth_order_estimator(trajectory, 2, total_simulation_time=5.0) == 0.0
 
@@ -119,6 +126,29 @@ def test_tur_returns_lower_bound_on_driven_chain():
     )
 
     assert math_is_finite_or_inf_positive(lower_bound)
+
+# Note: As time goes to infinity, the probability of observing a sequence that violates
+# detailed balance goes to zero. However, we can't simulate an infinitely long trajectory 
+# here, instead we have a finite length. We can say the length approximates the limit of 
+# infinite time, but because it's still finite, there's a non-zero chance that we estimate 
+# entropy production > 0. 
+def test_tur_zero_on_undriven_chain():
+    # k_i->j == k_j->i for all states with these parameters, so detailed balance 
+    # (a.k.a. zero entropy production because it's not being driven)
+    matrix = generate_rate_matrix_for_parallel_tracks(0.5, 0.5, 3.0, 3.0, 1.0, 1.0)
+    seed_simulation(7)
+    result = simulate_single_trajectory(matrix, METASTATE_GROUPS, max_length=20000)
+
+    state_mapping = {i: "A" if i % 2 == 0 else "B" for i in range(6)}
+    estimated_entropy_production = thermodynamic_uncertainty_relation_estimator(
+        result.trajectory.tolist(),
+        result.times.tolist(),
+        snippet_time_length=result.final_time / 20,
+        state_mapping=state_mapping,
+    )
+
+    assert estimated_entropy_production < ESTIMATOR_ZERO_TOLERANCE
+
 
 
 def test_estimators_are_pure():
