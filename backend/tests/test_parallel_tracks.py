@@ -20,7 +20,8 @@ PARAMETER_SETS = [
 SEEDS = (3, 7, 42, 123)
 
 
-def test_rate_matrix_is_6x6_and_normalized():
+def test_rate_matrix_is_6x6_with_zero_column_sums():
+    """Each column sums to zero: the diagonal equals the negative sum of the off-diagonal exit rates."""
     matrix = generate_rate_matrix_for_parallel_tracks(0.5, 0.3, 1.0, 0.2, 0.8, 0.4)
     assert matrix.shape == (6, 6)
     np.testing.assert_allclose(matrix.sum(axis=0), np.zeros(6), atol=1e-12)

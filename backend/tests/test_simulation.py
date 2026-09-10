@@ -92,7 +92,7 @@ def test_rejects_non_positive_exit_rate():
         validate_rate_matrix(bad)
 
 
-def test_rejects_unnormalized_columns():
+def test_rejects_non_zero_column_sums():
     bad = np.array([[-1.0, 1.0], [1.5, -1.0]])
     with pytest.raises(ValueError, match="column 0 must sum to zero, got 0.5"):
         validate_rate_matrix(bad)
@@ -138,7 +138,8 @@ def test_rejects_empty_metastate_groups():
         validate_metastate_groups({}, 2)
 
 
-def test_validate_rate_matrix_returns_normalized_copy():
+def test_validate_rate_matrix_returns_float64_copy():
+    """validate_rate_matrix returns a float64 copy with the diagonal preserved."""
     matrix = two_state_matrix()
     validated = validate_rate_matrix(matrix)
     np.testing.assert_allclose(validated, matrix)
