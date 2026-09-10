@@ -120,20 +120,27 @@ def test_tur_requires_snippet_time_length():
         thermodynamic_uncertainty_relation_estimator([0, 1, 0], [0.0, 1.0, 2.0])
 
 
-def test_tur_returns_lower_bound_on_driven_chain():
+def test_tur_returns_positive_or_infinite_on_driven_chain():
+    """The TUR estimator returns a finite positive value or inf on a driven chain.
+
+    Note: this asserts only the return shape. It is not a genuine lower-bound
+    comparison against the true EPR: the estimator is hard-coded to an A/B/C
+    topology while the mapping here collapses the 6-state chain to A/B, so a
+    bounds check would be flaky by construction.
+    """
     matrix = generate_rate_matrix_for_parallel_tracks(0.5, 0.3, 1.0, 0.2, 0.8, 0.4)
     seed_simulation(7)
     result = simulate_single_trajectory(matrix, METASTATE_GROUPS, max_length=20000)
 
     state_mapping = {i: "A" if i % 2 == 0 else "B" for i in range(6)}
-    lower_bound = thermodynamic_uncertainty_relation_estimator(
+    tur_estimate = thermodynamic_uncertainty_relation_estimator(
         result.trajectory.tolist(),
         result.times.tolist(),
         snippet_time_length=result.final_time / 20,
         state_mapping=state_mapping,
     )
 
-    assert math_is_finite_or_inf_positive(lower_bound)
+    assert math_is_finite_or_inf_positive(tur_estimate)
 
 # Note: As time goes to infinity, the probability of observing a sequence that violates
 # detailed balance goes to zero. However, we can't simulate an infinitely long trajectory 
