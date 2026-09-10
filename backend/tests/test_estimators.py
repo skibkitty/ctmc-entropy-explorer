@@ -25,9 +25,10 @@ def test_kth_order_zero_on_constant_trajectory():
     assert kth_order_estimator(trajectory, 1, total_simulation_time=5.0) == 0.0
     assert kth_order_estimator(trajectory, 2, total_simulation_time=5.0) == 0.0
 
+
 def test_kth_order_zero_on_cherrypicked_reversible_trajectory():
     """A trajectory that's reversible yields EPR 0.0."""
-    trajectory = [0, 1] * 20
+    trajectory = [0, 1] * 20 + [0]
     assert kth_order_estimator(trajectory, 1, total_simulation_time=5.0) == 0.0
     assert kth_order_estimator(trajectory, 2, total_simulation_time=5.0) == 0.0
 
