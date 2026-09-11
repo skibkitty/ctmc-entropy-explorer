@@ -41,18 +41,19 @@ def warm_up_simulator() -> None:
     )
 
 
+def _run_warmup(app: FastAPI) -> None:
+    """Warm-up body: flip the ready flag only if compilation fully succeeded."""
+    try:
+        warm_up_simulator()
+    except Exception:
+        app.state.simulator_ready = False
+        logger.exception("Numba warm-up failed; simulator stays cold")
+        return
+    app.state.simulator_ready = True
+
+
 def start_background_warmup(app: FastAPI) -> None:
     """Run ``warm_up_simulator`` on a daemon thread, flipping the ready flag on success."""
-
-    def _run() -> None:
-        try:
-            warm_up_simulator()
-        except Exception:
-            app.state.simulator_ready = False
-            logger.exception("Numba warm-up failed; simulator stays cold")
-            return
-        app.state.simulator_ready = True
-
     threading.Thread(
-        target=_run, name="numba-warmup", daemon=True,
+        target=_run_warmup, args=(app,), name="numba-warmup", daemon=True,
     ).start()
