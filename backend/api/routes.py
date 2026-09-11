@@ -8,6 +8,8 @@ Routes are intentionally thin: request parsing, state gating
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..ctmc_core.models.parallel_tracks import (
     METASTATE_GROUPS,
@@ -19,6 +21,12 @@ from .schemas import ParallelTracksPreset, SimulateRequest, SimulateResponse
 from .service import run_simulation
 
 router = APIRouter(prefix="/api")
+
+# Per-IP rate limit, complemented by the global concurrency semaphore in
+# ``main.py`` (a shared link can hit the box from many IPs at once; per-IP
+# limits alone cannot stop that from queueing a single 0.1 CPU instance). The
+# limit string is resolved per request so tests can adjust ``RATE_LIMIT``.
+limiter = Limiter(key_func=get_remote_address)
 
 # Default slider values for the flagship parallel-tracks demo. The frontend
 # seeds its form from these so it never hardcodes simulation parameters.
@@ -41,6 +49,7 @@ def health(request: Request) -> dict[str, str]:
 
 
 @router.post("/simulate", response_model=SimulateResponse)
+@limiter.limit(lambda: config.settings.rate_limit)
 def simulate(request: Request, body: SimulateRequest) -> SimulateResponse:
     """Run one CTMC trajectory through the k-th order estimator sweep."""
     if not request.app.state.simulator_ready:
@@ -49,14 +58,25 @@ def simulate(request: Request, body: SimulateRequest) -> SimulateResponse:
             detail="Simulator is waking up (Numba JIT warm-up); retry shortly",
         )
 
-    try:
-        return run_simulation(
-            body,
-            max_length_cap=config.settings.max_length_cap,
-            max_n_states_cap=config.settings.max_n_states_cap,
+    if not request.app.state.sim_semaphore.acquire(blocking=False):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Simulators busy: maximum concurrent simulations in flight; "
+                "retry shortly"
+            ),
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        try:
+            return run_simulation(
+                body,
+                max_length_cap=config.settings.max_length_cap,
+                max_n_states_cap=config.settings.max_n_states_cap,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    finally:
+        request.app.state.sim_semaphore.release()
 
 
 @router.get("/presets/parallel-tracks", response_model=ParallelTracksPreset)
