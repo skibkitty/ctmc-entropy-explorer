@@ -10,9 +10,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from .api import config
-from .api.routes import router
+from .api.routes import limiter, router
 from .api.warmup import start_background_warmup
 
 # Re-export for backward compatibility with tests.
@@ -57,6 +59,11 @@ def create_app() -> FastAPI:
     application.state.sim_semaphore = threading.BoundedSemaphore(
         config.settings.max_concurrent_sims
     )
+
+    # Per-IP rate limiting (slowapi) — the 429 exception handler reads the
+    # limiter back off ``application.state``.
+    application.state.limiter = limiter
+    application.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # CORS
     application.add_middleware(
