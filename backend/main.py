@@ -11,12 +11,18 @@ app = FastAPI(
     version="0.1.0",
 )
 
+def parse_cors_origins(value: str) -> list[str]:
+    """Split a comma-separated CORS origin list into trimmed, non-empty entries."""
+    return [o.strip() for o in value.split(",") if o.strip()]
+
+
 # CORS origins: comma-separated list in CORS_ORIGINS env var, or dev defaults
-_cors_origins_str = os.environ.get(
-    "CORS_ORIGINS",
-    "http://localhost:5173,http://localhost:4173",
+cors_origins = parse_cors_origins(
+    os.environ.get(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://localhost:4173",
+    )
 )
-cors_origins = [o.strip() for o in _cors_origins_str.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
