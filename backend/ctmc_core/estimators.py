@@ -25,6 +25,7 @@ def kth_order_estimator(trajectory, k, total_simulation_time):
     Compares frequencies of k+1-length state sequences to their time-reversed
     versions. For Markovian systems this gives exact results for all k (given
     sufficient statistics).
+    For derivation, see: https://doi.org/10.1063/5.0247331
 
     Mathematical basis:
         EPR ≈ (1/kτ) Σ P(s₁...sₖ₊₁) ln[P(s₁...sₖ₊₁) / P(sₖ₊₁...s₁)]
@@ -177,6 +178,8 @@ def repeated_transitions_estimator(trajectory, start, end, total_simulation_time
     where R is the transition rate, f₊/f₋ are forward/backward frequencies,
     and f₊|₊, f₋|₋ are conditional forward/backward frequencies.
 
+    For derivation, see: https://doi.org/10.48550/arXiv.2203.07427
+
     Args:
         trajectory: List of states
         start: Starting state for analysis
@@ -255,6 +258,8 @@ def thermodynamic_uncertainty_relation_estimator(trajectory, times,
 
     This provides a lower bound on entropy production that is particularly
     useful for systems with complex dynamics.
+
+    For derivation, see: https://doi.org/10.48550/arXiv.1502.05944
 
     Args:
         trajectory: List of state indices
