@@ -308,18 +308,18 @@ Work through phases in order. **Each task = a separate commit.**
       raising.
 
 ### Phase 2 — Backend API
-- [ ] P2-T1: Pydantic request/response models per Section 6.
-- [ ] P2-T2: Implement `POST /api/simulate` wiring Phase 1 functions, with
+- [x] P2-T1: Pydantic request/response models per Section 6.
+- [x] P2-T2: Implement `POST /api/simulate` wiring Phase 1 functions, with
       input caps and full matrix validation (square, finite, off-diagonal ≥ 0,
       columns sum to zero) plus group validation.
-- [ ] P2-T3: Implement `GET /api/presets/parallel-tracks`.
-- [ ] P2-T4: Numba warm-up on app startup (run one tiny simulation through
+- [x] P2-T3: Implement `GET /api/presets/parallel-tracks`.
+- [x] P2-T4: Numba warm-up on app startup (run one tiny simulation through
       every JIT'd function); flip `/api/health` → `{"status": "ready"}` once
       complete.
-- [ ] P2-T5: Rate limiting (slowapi per-IP) **and a global concurrency
+- [x] P2-T5: Rate limiting (slowapi per-IP) **and a global concurrency
       semaphore** (max 2–3 concurrent sims → 503 "busy, retry") on
       `/api/simulate`.
-- [ ] P2-T6: FastAPI TestClient integration tests for all endpoints, including
+- [x] P2-T6: FastAPI TestClient integration tests for all endpoints, including
       422 error paths.
 
 ### Phase 3 — Frontend core
