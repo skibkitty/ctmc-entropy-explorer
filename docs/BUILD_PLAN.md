@@ -34,9 +34,9 @@ The author has a Python module (`ctmc_simulator.py`, preserved verbatim in
 
 | Asset | What it does | Where to port |
 |---|---|---|
-| `simulate_trajectory_core`, `precompute_transition_data`, `simulate_single_trajectory` | Gillespie CTMC simulation with metastate coarse-graining | Copy JIT functions **unchanged**; refactor the wrapper into a pure function |
+| `simulate_trajectory_core`, `precompute_transition_data`, `simulate_single_trajectory` | Gillespie CTMC simulation with metastate coarse-graining | Copy JIT functions **unchanged**; refactor the wrapper into a pure function. `simulate_trajectory_core` later refactored per issue #6 (print-and-break → explicit raise) |
 | `kth_order_estimator` | Generic EPR estimator from k+1-length sequence statistics | Port to `estimators.py` |
-| `repeated_transitions_estimator`, `analyze_transitions` | EPR estimator exact for unicyclic systems | Port to `estimators.py` |
+| `repeated_transitions_estimator`, `analyze_transitions` | EPR estimator exact for unicyclic systems | Port to `estimators.py` (pattern-counter renamed to `count_repeated_transition_patterns`) |
 | `thermodynamic_uncertainty_relation_estimator`, `count_transitions_fast`, `find_snippet_boundaries_fast` | TUR lower-bound estimator (hard-coded A/B/C topology) | Copy JIT helpers unchanged; port wrapper into `estimators.py`. **A general-TUR is a user-led stretch goal, not agent work** (see Phase 6). |
 | `generate_rate_matrix_for_parallel_tracks`, `get_true_EPR_for_parallel_tracks` | 6-state parallel-tracks model with **closed-form exact EPR** — the flagship demo asset | Port to `models/parallel_tracks.py` |
 | `mathematica_to_numpy_array`, `save_*_to_text`, `process_simulation_results` | CLI/notebook plumbing | **Do not port** |
@@ -207,7 +207,7 @@ which per-IP limits cannot stop.
 - All **off-diagonal** entries must be **non-negative**.
 - Diagonal (exit-rate) entries must be strictly positive per state. The JIT
   core's "negative exit rate → print warning and break" branch (see
-  `simulate_trajectory_core`) must become an **explicit raise**: a
+  `simulate_trajectory_core`) is now an **explicit raise** (issue #6): a
   numerically-adjacent-but-column-balanced matrix must return a clear 422, not
   a silently truncated/empty trajectory.
 - Metastate groups must cover **every** state exactly once (duplicate or
@@ -265,40 +265,42 @@ health check.
 Work through phases in order. **Each task = a separate commit.**
 
 ### Phase 0 — Repo & scaffolding
-- [ ] P0-T1: Create monorepo with `/backend` and `/frontend` directories, root
+- [x] P0-T1: Create monorepo with `/backend` and `/frontend` directories, root
       README stub, `.gitignore`, license. _(Done — repo exists on GitHub:
       `skibkitty/ctmc-entropy-explorer`.)_
-- [ ] P0-T2: Scaffold FastAPI app in `/backend` with `/api/health` returning
+- [x] P0-T2: Scaffold FastAPI app in `/backend` with `/api/health` returning
       `{"status": "cold"}` initially.
-- [ ] P0-T3: Scaffold Vite + React + TS app in `/frontend` with Tailwind and
+- [x] P0-T3: Scaffold Vite + React + TS app in `/frontend` with Tailwind and
       shadcn/ui installed and configured.
-- [ ] P0-T4: Set up CORS on the backend for the frontend's dev and prod
+- [x] P0-T4: Set up CORS on the backend for the frontend's dev and prod
       origins.
-- [ ] P0-T5: **GitHub Actions CI**: backend `pytest` + frontend
+- [x] P0-T5: **GitHub Actions CI**: backend `pytest` + frontend
       `tsc`/`build` on push/PR. (SWE-signal; runs from the first commit.)
 
 ### Phase 1 — Port and refactor simulation core
-- [ ] P1-T1: Copy JIT functions (`simulate_trajectory_core`,
+- [x] P1-T1: Copy JIT functions (`simulate_trajectory_core`,
       `precompute_transition_data`, `find_snippet_boundaries_fast`,
       `count_transitions_fast`) into `backend/ctmc_core/simulation.py`
-      **unchanged**.
-- [ ] P1-T2: Refactor `simulate_single_trajectory` into a pure function that
+      **unchanged**. _(`simulate_trajectory_core` was later refactored per
+      issue #6; the other three remain verbatim.)_
+- [x] P1-T2: Refactor `simulate_single_trajectory` into a pure function that
       returns a structured result object and raises `ValueError` on invalid
       input (no printing/warn-and-continue). The JIT core's "negative exit
       rate → print and break" path must become an explicit raise (non-positive
-      or non-finite exit rate → error).
-- [ ] P1-T3: Port `kth_order_estimator`, `repeated_transitions_estimator`,
+      or non-finite exit rate → error). _(Done — the raise lives in the core
+      and propagates through `simulate_single_trajectory`.)_
+- [x] P1-T3: Port `kth_order_estimator`, `repeated_transitions_estimator`,
       `analyze_transitions`, `thermodynamic_uncertainty_relation_estimator`
       into `backend/ctmc_core/estimators.py`, same treatment (no prints, raise
       on bad input, return values not side effects). TUR wrapper is ported for
       completeness; it is **not** exposed in the MVP or stretch beyond item 9
       (user-led).
-- [ ] P1-T4: Port `generate_rate_matrix_for_parallel_tracks` and
+- [x] P1-T4: Port `generate_rate_matrix_for_parallel_tracks` and
       `get_true_EPR_for_parallel_tracks` into
       `backend/ctmc_core/models/parallel_tracks.py`.
-- [ ] P1-T5: Port trajectory decimation as a new function (uniform-stride or
+- [x] P1-T5: Port trajectory decimation as a new function (uniform-stride or
       LTTB) for `trajectory_preview`.
-- [ ] P1-T6: pytest unit tests:
+- [x] P1-T6: pytest unit tests:
       (a) parallel-tracks EPR converges to true EPR as trajectory grows, ≥2
       parameter sets;
       (b) rate matrix normalization rejects malformed matrix;
@@ -460,10 +462,11 @@ backend/
 
 ### Ground rules for the port
 
-1. **JIT functions copied verbatim.** `simulate_trajectory_core`,
-   `precompute_transition_data`, `find_snippet_boundaries_fast`,
-   `count_transitions_fast` are correct and Numba-optimized. Do not
-   "improve" them unless a test proves a bug.
+1. **JIT functions copied verbatim.** `precompute_transition_data`,
+   `find_snippet_boundaries_fast`, `count_transitions_fast` are correct and
+   Numba-optimized. Do not "improve" them unless a test proves a bug.
+   `simulate_trajectory_core` is the exception: refactored per issue #6 to
+   replace its print-and-break branch with an explicit `ValueError` raise.
 2. **No print statements in core.** All debug/informational prints are
    removed or converted to logging (or just dropped). All warn-and-continue
    becomes raise/422.
